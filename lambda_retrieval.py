@@ -74,7 +74,9 @@ def get_permission_envelope(user_id):
                 "eligibility_context": eligibility
             }
     except Exception as e:
-        print(f"Identity Enrichment Error: {str(e)}")
+        print(f"!!! Identity Enrichment Error for {user_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
     # 3. Default Fallback (Deny Access)
     return {
