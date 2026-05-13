@@ -1,0 +1,10 @@
+boto3
+opensearch-py
+python-dotenv
+requests
+requests-aws4auth
+langchain-aws
+langchain-core
+typing-extensions
+psycopg2-binary
+streamlit
