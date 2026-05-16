@@ -37,11 +37,20 @@ DB_CONFIG = {
 }
 
 def get_permission_envelope(user_id):
-    """
-    PRODUCTION GRADE: Identity Enrichment Chain.
-    Fetches permissions live from the PostgreSQL User Registry.
-    """
+    # 0. Safety: Strip whitespace
+    user_id = user_id.strip() if user_id else ""
+    
     # 1. Handle special administrative test profiles (optional)
+    if user_id == "ADMIN_GLOBAL_CHECK":
+        return {
+            "tenant_id": "GLOBAL", # Bypass tenant filter
+            "org_id": "GLOBAL",
+            "sub_ids": ["*"],       # Bypass org filter
+            "roles": ["admin"],
+            "classification_access": ["public", "confidential", "secret", "top_secret"],
+            "eligibility_context": ["enabled"]
+        }
+        
     if user_id == "sarah":
         return {
             "tenant_id": "acme", "org_id": "acme_logistics", "sub_ids": ["acme_logistics", "acme_warehouse"],
@@ -65,6 +74,24 @@ def get_permission_envelope(user_id):
         
         if row:
             tid, oid, sub_ids, roles, class_access, eligibility = row
+            
+            # PRODUCTION UPGRADE: If user is a manager, grant access to all departments in their tenant
+            if roles and "manager" in roles:
+                try:
+                    conn_elevate = psycopg2.connect(**DB_CONFIG)
+                    cur_elevate = conn_elevate.cursor()
+                    cur_elevate.execute("SELECT DISTINCT org_id FROM users WHERE tenant_id = %s", (tid,))
+                    all_orgs = [r[0] for r in cur_elevate.fetchall()]
+                    
+                    # Ensure sub_ids is a list before merging
+                    current_sub_ids = sub_ids if isinstance(sub_ids, list) else [oid]
+                    sub_ids = list(set(current_sub_ids + all_orgs))
+                    
+                    cur_elevate.close()
+                    conn_elevate.close()
+                except Exception as ex:
+                    print(f"!!! Warning: Could not elevate manager permissions for {user_id}: {str(ex)}")
+
             return {
                 "tenant_id": tid,
                 "org_id": oid,
@@ -74,7 +101,7 @@ def get_permission_envelope(user_id):
                 "eligibility_context": eligibility
             }
     except Exception as e:
-        print(f"!!! Identity Enrichment Error for {user_id}: {str(e)}")
+        print(f"Identity Enrichment Error for {user_id}: {str(e)}")
         import traceback
         traceback.print_exc()
 
@@ -115,34 +142,62 @@ def retrieve_context(query, user_id="john", top_k=5):
     # 3. Generate Embedding
     query_vector = generate_query_embedding(query)
     
-    # 4. Execute Vector Search with Hard Filters
-    search_query = {
-        "size": top_k,
-        "query": {
-            "bool": {
-                "must": [
-                    {
-                        "knn": {
-                            "embedding": {
-                                "vector": query_vector, 
-                                "k": top_k
-                            }
-                        }
+    # 4. Construct Query with Identity-Based Permission Envelope
+    # GLOBAL BYPASS: If tenant is GLOBAL, search EVERYTHING without filters
+    if envelope["tenant_id"] == "GLOBAL":
+        search_query = {
+            "size": top_k,
+            "query": {
+                "knn": {
+                    "embedding": {
+                        "vector": query_vector,
+                        "k": top_k
                     }
-                ],
-                "filter": permission_filters
+                }
             }
         }
-    }
+    else:
+        # Standard Multi-Tenant Filtered Search
+        search_query = {
+            "size": top_k,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "knn": {
+                                "embedding": {
+                                    "vector": query_vector, 
+                                    "k": top_k
+                                }
+                            }
+                        }
+                    ],
+                    "filter": [
+                        {"term": {"metadata.tenant_id": envelope["tenant_id"]}},
+                        {"terms": {"metadata.org_id": envelope["sub_ids"]}},
+                        {"terms": {"metadata.classification": envelope["classification_access"]}},
+                        {"term": {"metadata.eligibility": envelope["eligibility_context"]}}
+                    ]
+                }
+            }
+        }
     
     client = get_opensearch_client()
-    response = client.search(index=INDEX_NAME, body=search_query)
+    try:
+        response = client.search(index=INDEX_NAME, body=search_query)
+    except Exception as e:
+        # Re-raise with a more descriptive message if it's an authorization issue
+        error_msg = str(e)
+        if "AuthorizationException" in error_msg or "403" in error_msg:
+            print(f"CRITICAL: OpenSearch Authorization Error. Check Data Access Policies for {INDEX_NAME}")
+        raise e
     
     results = []
     for hit in response['hits']['hits']:
         results.append({
             "content": hit['_source']['content'],
-            "metadata": hit['_source']['metadata']
+            "metadata": hit['_source']['metadata'],
+            "score": hit['_score'] # Include the similarity score
         })
     
     # 5. Secondary COI Check

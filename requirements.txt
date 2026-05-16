@@ -8,3 +8,5 @@ langchain-core
 typing-extensions
 psycopg2-binary
 streamlit
+PyPDF2
+langchain-community

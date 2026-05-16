@@ -40,9 +40,15 @@ pip install -r requirements.txt
     ```bash
     python opensearch_setup.py
     ```
-4.  **Ingest Data**:
+4.  **Ingest SQL Data**:
     ```bash
     python lambda_ingestion.py
+    ```
+5.  **Ingest S3 Documents** (Optional):
+    - Upload documents to S3: `s3://bucket/tenant/org/file.pdf`
+    - Run the S3 ingestor:
+    ```bash
+    python s3_ingestion.py
     ```
 
 ### 4. Running the App

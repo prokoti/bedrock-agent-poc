@@ -16,12 +16,11 @@ def debug_johnson():
     print("--- Searching SQL Database ---")
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
-    print("--- Listing Managers (High-Level Access) ---")
-    cur.execute("SELECT user_id, tenant_id, org_id FROM users WHERE 'manager' = ANY(roles) LIMIT 10")
+    print("--- Searching 'employees' for logistics ---")
+    cur.execute("SELECT user_id, tenant_id, org_id FROM employees WHERE user_id LIKE '%logistics%' LIMIT 10")
     rows = cur.fetchall()
-    print("USER_ID | TENANT | ORG")
     for row in rows:
-        print(f"{row[0]} | {row[1]} | {row[2]}")
+        print(row)
     cur.close()
     conn.close()
 

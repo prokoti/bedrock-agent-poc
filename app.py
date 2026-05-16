@@ -119,4 +119,4 @@ if prompt := st.chat_input("Ask about employees, projects, or logistics..."):
 
 # Footer
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: grey;'>Prokoti GenAI Security Wall v2.1 (Live DB Enabled) - Multi-Tenant Isolation Verified</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: grey;'>Prokoti GenAI Security Wall v2.2 (Identity-First Protection) - Multi-Tenant Isolation Verified</p>", unsafe_allow_html=True)

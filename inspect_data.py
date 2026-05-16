@@ -54,12 +54,12 @@ def search_johnson():
     query = {
         "query": {
             "match": {
-                "content": "Patricia Johnson"
+                "content": "Uber"
             }
         }
     }
     response = client.search(index=INDEX_NAME, body=query)
-    print(f"\n--- OpenSearch results for 'Patricia Johnson' ({len(response['hits']['hits'])} found) ---")
+    print(f"\n--- OpenSearch results for 'Uber' ({len(response['hits']['hits'])} found) ---")
     for hit in response['hits']['hits']:
         print(f"ID: {hit['_id']}")
         print(f"Content: {hit['_source']['content']}")
