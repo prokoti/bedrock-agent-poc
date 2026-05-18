@@ -3,18 +3,30 @@ import json
 import os
 from opensearch_service import get_opensearch_client
 from dotenv import load_dotenv
+import psycopg2
 
 load_dotenv()
 
-# AWS Configuration
+# --- Configuration ---
 REGION = os.getenv("AWS_REGION", "ap-south-1")
-HOST = os.getenv("OPENSEARCH_URL").replace("https://", "")
+HOST = os.getenv("OPENSEARCH_URL", "").replace("https://", "")
 INDEX_NAME = os.getenv("OPENSEARCH_INDEX", "employee-knowledge")
 
-# Bedrock Client
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST"),
+    "port": os.getenv("DB_PORT"),
+    "database": os.getenv("DB_NAME"),
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD")
+}
+
+# --- AWS Clients ---
 bedrock = boto3.client(service_name="bedrock-runtime", region_name=REGION)
 
+# --- Functions ---
+
 def generate_query_embedding(text):
+    """Converts the user's text prompt into a vector using Titan Embeddings."""
     body = json.dumps({"inputText": text})
     response = bedrock.invoke_model(
         body=body,
@@ -25,36 +37,29 @@ def generate_query_embedding(text):
     response_body = json.loads(response.get("body").read())
     return response_body.get("embedding")
 
-import psycopg2
-
-# DB Configuration for Identity Enrichment
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST"),
-    "port": os.getenv("DB_PORT"),
-    "database": os.getenv("DB_NAME"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD")
-}
 
 def get_permission_envelope(user_id):
-    # 0. Safety: Strip whitespace
+    """Fetches user claims from the database to build the security envelope."""
     user_id = user_id.strip() if user_id else ""
     
-    # 1. Handle special administrative test profiles (optional)
+    # 1. Handle special administrative profiles
     if user_id == "ADMIN_GLOBAL_CHECK":
         return {
-            "tenant_id": "GLOBAL", # Bypass tenant filter
+            "tenant_id": "GLOBAL",
             "org_id": "GLOBAL",
-            "sub_ids": ["*"],       # Bypass org filter
+            "sub_ids": ["*"],
             "roles": ["admin"],
             "classification_access": ["public", "confidential", "secret", "top_secret"],
-            "eligibility_context": ["enabled"]
+            "eligibility_context": "enabled"
         }
         
     if user_id == "sarah":
         return {
-            "tenant_id": "acme", "org_id": "acme_logistics", "sub_ids": ["acme_logistics", "acme_warehouse"],
-            "roles": ["research_lead"], "classification_access": ["confidential", "internal", "public"],
+            "tenant_id": "acme", 
+            "org_id": "acme_logistics", 
+            "sub_ids": ["acme_logistics", "acme_warehouse"],
+            "roles": ["research_lead"], 
+            "classification_access": ["confidential", "internal", "public"],
             "eligibility_context": "enabled"
         }
 
@@ -75,7 +80,7 @@ def get_permission_envelope(user_id):
         if row:
             tid, oid, sub_ids, roles, class_access, eligibility = row
             
-            # PRODUCTION UPGRADE: If user is a manager, grant access to all departments in their tenant
+            # Elevate manager permissions to see all tenant orgs
             if roles and "manager" in roles:
                 try:
                     conn_elevate = psycopg2.connect(**DB_CONFIG)
@@ -83,7 +88,6 @@ def get_permission_envelope(user_id):
                     cur_elevate.execute("SELECT DISTINCT org_id FROM users WHERE tenant_id = %s", (tid,))
                     all_orgs = [r[0] for r in cur_elevate.fetchall()]
                     
-                    # Ensure sub_ids is a list before merging
                     current_sub_ids = sub_ids if isinstance(sub_ids, list) else [oid]
                     sub_ids = list(set(current_sub_ids + all_orgs))
                     
@@ -102,49 +106,52 @@ def get_permission_envelope(user_id):
             }
     except Exception as e:
         print(f"Identity Enrichment Error for {user_id}: {str(e)}")
-        import traceback
-        traceback.print_exc()
 
-    # 3. Default Fallback (Deny Access)
+    # 3. Default Fallback (Deny Access / Public Only)
     return {
-        "tenant_id": "public", "org_id": "public", "sub_ids": ["public"],
-        "roles": [], "classification_access": ["public"], "eligibility_context": "disabled"
+        "tenant_id": "public", 
+        "org_id": "public", 
+        "sub_ids": ["public"],
+        "roles": [], 
+        "classification_access": ["public"], 
+        "eligibility_context": "disabled"
     }
+
 
 def construct_metadata_filter(envelope):
     """
-    Step 4-5: Construct Metadata filter as a HARD constraint.
-    This is the 'leak-heating security wall'.
+    Step 4-5: Dynamically constructs the OpenSearch filter array.
+    This centralized function makes your security logic easy to manage.
     """
     filters = [
         {"term": {"metadata.tenant_id": envelope["tenant_id"]}},
         {"terms": {"metadata.org_id": envelope["sub_ids"]}},
-        {"terms": {"metadata.classification": envelope["classification_access"]}}
+        {"terms": {"metadata.classification": envelope["classification_access"]}},
+        {"term": {"metadata.eligibility": envelope["eligibility_context"]}}
     ]
-    
-    if envelope["eligibility_context"] != "enabled":
-        filters.append({"term": {"metadata.eligibility": envelope["eligibility_context"]}})
-        
     return filters
+
 
 def conflict_of_interest_check(user_id, hits):
     """Secondary security validation layer."""
-    # Placeholder for dynamic COI logic
     return hits
 
+
 def retrieve_context(query, user_id="john", top_k=5):
+    """Orchestrates the secure retrieval process."""
+    
     # 1. Construct Permission Envelope
     envelope = get_permission_envelope(user_id)
     
-    # 2. Build HARD metadata filter
+    # 2. Build HARD metadata filter using the dedicated function
     permission_filters = construct_metadata_filter(envelope)
     
-    # 3. Generate Embedding
+    # 3. Generate Embedding for the search query
     query_vector = generate_query_embedding(query)
     
-    # 4. Construct Query with Identity-Based Permission Envelope
-    # GLOBAL BYPASS: If tenant is GLOBAL, search EVERYTHING without filters
+    # 4. Construct Query
     if envelope["tenant_id"] == "GLOBAL":
+        # GLOBAL BYPASS: Search EVERYTHING without filters
         search_query = {
             "size": top_k,
             "query": {
@@ -172,32 +179,29 @@ def retrieve_context(query, user_id="john", top_k=5):
                             }
                         }
                     ],
-                    "filter": [
-                        {"term": {"metadata.tenant_id": envelope["tenant_id"]}},
-                        {"terms": {"metadata.org_id": envelope["sub_ids"]}},
-                        {"terms": {"metadata.classification": envelope["classification_access"]}},
-                        {"term": {"metadata.eligibility": envelope["eligibility_context"]}}
-                    ]
+                    # Injection Point: We use the dynamically built filters here!
+                    "filter": permission_filters 
                 }
             }
         }
     
+    # Execute Search
     client = get_opensearch_client()
     try:
         response = client.search(index=INDEX_NAME, body=search_query)
     except Exception as e:
-        # Re-raise with a more descriptive message if it's an authorization issue
         error_msg = str(e)
         if "AuthorizationException" in error_msg or "403" in error_msg:
             print(f"CRITICAL: OpenSearch Authorization Error. Check Data Access Policies for {INDEX_NAME}")
         raise e
     
+    # Parse Results
     results = []
     for hit in response['hits']['hits']:
         results.append({
             "content": hit['_source']['content'],
             "metadata": hit['_source']['metadata'],
-            "score": hit['_score'] # Include the similarity score
+            "score": hit['_score']
         })
     
     # 5. Secondary COI Check
@@ -205,8 +209,9 @@ def retrieve_context(query, user_id="john", top_k=5):
     
     return safe_results
 
+# --- Execution ---
 if __name__ == "__main__":
     print("Retrieval Orchestrator (POOLED Architecture) ready.")
-    # Test with a mock user
+    # Test with the mock user
     test_results = retrieve_context("What is the project status?", user_id="sarah")
     print(f"Retrieved {len(test_results)} results for Sarah.")
