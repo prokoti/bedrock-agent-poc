@@ -71,11 +71,16 @@ with st.sidebar:
             st.markdown(f"**Roles:** `{', '.join(envelope['roles'])}`")
 
             if envelope["tenant_id"] == "public" and lambda_retrieval.LAST_ENRICHMENT_ERROR:
+                try:
+                    _secret_keys = sorted(list(st.secrets.keys()))
+                except Exception:
+                    _secret_keys = ["<unavailable>"]
                 st.error(
                     f"Identity lookup failed → returned deny-by-default envelope.\n\n"
                     f"**Reason:** {lambda_retrieval.LAST_ENRICHMENT_ERROR}\n\n"
                     f"**DB host being used:** `{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}` "
-                    f"as user `{os.getenv('DB_USER')}`"
+                    f"as user `{os.getenv('DB_USER')}`\n\n"
+                    f"**st.secrets keys found:** `{_secret_keys}`"
                 )
 
             with st.expander("View Full Metadata"):
