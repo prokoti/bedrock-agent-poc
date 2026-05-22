@@ -49,8 +49,8 @@ def generate_response(user_query, user_id="john", agent_type="COREAIAGENT"):
     
     # 1 & 2. Perform Dual-Retrieval (Global check + Secure Filtered)
     try:
-        global_results = retrieve_context(user_query, user_id="ADMIN_GLOBAL_CHECK")
-        secure_results = retrieve_context(user_query, user_id=user_id)
+        global_results = retrieve_context(user_query, user_id="ADMIN_GLOBAL_CHECK", top_k=50)
+        secure_results = retrieve_context(user_query, user_id=user_id, top_k=50)
     except Exception as ret_err:
         print(f"ERROR: Retrieval Error: {str(ret_err)}")
         if "AuthorizationException" in str(ret_err) or "403" in str(ret_err):
