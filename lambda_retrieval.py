@@ -17,8 +17,12 @@ DB_CONFIG = {
     "port": os.getenv("DB_PORT"),
     "database": os.getenv("DB_NAME"),
     "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD")
+    "password": os.getenv("DB_PASSWORD"),
+    "sslmode": "require",
+    "connect_timeout": 10,
 }
+
+LAST_ENRICHMENT_ERROR = None
 
 # --- AWS Clients ---
 bedrock = boto3.client(service_name="bedrock-runtime", region_name=REGION)
@@ -64,6 +68,8 @@ def get_permission_envelope(user_id):
         }
 
     # 2. Live Database Lookup
+    global LAST_ENRICHMENT_ERROR
+    LAST_ENRICHMENT_ERROR = None
     try:
         conn = psycopg2.connect(**DB_CONFIG)
         cur = conn.cursor()
@@ -104,8 +110,10 @@ def get_permission_envelope(user_id):
                 "classification_access": class_access,
                 "eligibility_context": eligibility
             }
+        LAST_ENRICHMENT_ERROR = f"User '{user_id}' not found in users table"
     except Exception as e:
-        print(f"Identity Enrichment Error for {user_id}: {str(e)}")
+        LAST_ENRICHMENT_ERROR = f"{type(e).__name__}: {str(e).strip()}"
+        print(f"Identity Enrichment Error for {user_id}: {LAST_ENRICHMENT_ERROR}")
 
     # 3. Default Fallback (Deny Access / Public Only)
     return {

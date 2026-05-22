@@ -14,6 +14,7 @@ except (FileNotFoundError, st.errors.StreamlitSecretNotFoundError):
 import json
 from agent_runtime import generate_response
 from lambda_retrieval import get_permission_envelope
+import lambda_retrieval
 
 # Page Configuration
 st.set_page_config(
@@ -63,12 +64,20 @@ with st.sidebar:
     if user_id:
         with st.spinner("Enriching Identity..."):
             envelope = get_permission_envelope(user_id)
-            
+
             st.subheader("🛡️ Permission Envelope")
             st.markdown(f"**Tenant:** `{envelope['tenant_id']}`")
             st.markdown(f"**Org ID:** `{envelope['org_id']}`")
             st.markdown(f"**Roles:** `{', '.join(envelope['roles'])}`")
-            
+
+            if envelope["tenant_id"] == "public" and lambda_retrieval.LAST_ENRICHMENT_ERROR:
+                st.error(
+                    f"Identity lookup failed → returned deny-by-default envelope.\n\n"
+                    f"**Reason:** {lambda_retrieval.LAST_ENRICHMENT_ERROR}\n\n"
+                    f"**DB host being used:** `{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}` "
+                    f"as user `{os.getenv('DB_USER')}`"
+                )
+
             with st.expander("View Full Metadata"):
                 st.json(envelope)
     
