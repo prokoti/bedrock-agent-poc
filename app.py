@@ -1,11 +1,19 @@
 import streamlit as st
 import os
-import json
-from agent_runtime import generate_response
-from lambda_retrieval import get_permission_envelope
 from dotenv import load_dotenv
 
 load_dotenv()
+
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, (str, int, float, bool)):
+            os.environ.setdefault(_k, str(_v))
+except (FileNotFoundError, st.errors.StreamlitSecretNotFoundError):
+    pass
+
+import json
+from agent_runtime import generate_response
+from lambda_retrieval import get_permission_envelope
 
 # Page Configuration
 st.set_page_config(
