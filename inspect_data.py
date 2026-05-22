@@ -42,8 +42,7 @@ def inspect_all_data():
             org = meta.get('org_id', 'N/A')
             user = meta.get('user_id', 'N/A')
             
-            print(f"{doc_id:<25} | {tenant:<10} | {org:<12} | {user:<10} | {classification:<10} | {content}")
-
+            print(f"{doc_id:<25} | {tenant:<10} | {org:<12} | {user:<10} | {classification:<10} | {content}"
         print("\n" + "="*100 + "\n")
             
     except Exception as e:
@@ -65,6 +64,7 @@ def search_johnson():
         print(f"Content: {hit['_source']['content']}")
         print(f"Metadata: {hit['_source']['metadata']}")
         print("-" * 40)
-
+  
 if __name__ == "__main__":
     search_johnson()
+    
