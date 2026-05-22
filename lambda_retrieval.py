@@ -85,38 +85,7 @@ def get_permission_envelope(user_id):
         
         if row:
             tid, oid, sub_ids, roles, class_access, eligibility = row
-
-            # Normalize fields: ensure lists for sub_ids, roles, classification_access
-            def _ensure_list(v):
-                if v is None:
-                    return []
-                if isinstance(v, list):
-                    return v
-                if isinstance(v, (str, bytes)):
-                    s = v.decode() if isinstance(v, bytes) else v
-                    s = s.strip()
-                    # Attempt to parse JSON array stored as text
-                    if s.startswith("[") and s.endswith("]"):
-                        try:
-                            import json as _json
-                            parsed = _json.loads(s)
-                            if isinstance(parsed, list):
-                                return parsed
-                        except Exception:
-                            pass
-                    # Comma-separated
-                    if "," in s:
-                        return [p.strip() for p in s.split(",") if p.strip()]
-                    if s == "":
-                        return []
-                    return [s]
-                # Fallback: wrap in list
-                return [v]
-
-            sub_ids = _ensure_list(sub_ids)
-            roles = _ensure_list(roles)
-            class_access = _ensure_list(class_access)
-
+            
             # Elevate manager permissions to see all tenant orgs
             if roles and "manager" in roles:
                 try:
@@ -124,16 +93,16 @@ def get_permission_envelope(user_id):
                     cur_elevate = conn_elevate.cursor()
                     cur_elevate.execute("SELECT DISTINCT org_id FROM users WHERE tenant_id = %s", (tid,))
                     all_orgs = [r[0] for r in cur_elevate.fetchall()]
-
+                    
                     current_sub_ids = sub_ids if isinstance(sub_ids, list) else [oid]
                     sub_ids = list(set(current_sub_ids + all_orgs))
-
+                    
                     cur_elevate.close()
                     conn_elevate.close()
                 except Exception as ex:
                     print(f"!!! Warning: Could not elevate manager permissions for {user_id}: {str(ex)}")
 
-            envelope = {
+            return {
                 "tenant_id": tid,
                 "org_id": oid,
                 "sub_ids": sub_ids,
@@ -141,11 +110,6 @@ def get_permission_envelope(user_id):
                 "classification_access": class_access,
                 "eligibility_context": eligibility
             }
-
-            # Debug: print envelope for troubleshooting
-            print(f"[DEBUG] Permission envelope for {user_id}: {envelope}")
-
-            return envelope
         LAST_ENRICHMENT_ERROR = f"User '{user_id}' not found in users table"
     except Exception as e:
         LAST_ENRICHMENT_ERROR = f"{type(e).__name__}: {str(e).strip()}"
@@ -181,7 +145,7 @@ def conflict_of_interest_check(user_id, hits):
     return hits
 
 
-def retrieve_context(query, user_id="john", top_k=20):
+def retrieve_context(query, user_id="john", top_k=5):
     """Orchestrates the secure retrieval process."""
     
     # 1. Construct Permission Envelope

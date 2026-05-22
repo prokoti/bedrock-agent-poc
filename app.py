@@ -92,9 +92,7 @@ with st.sidebar:
     if st.button("Reset Chat"):
         st.session_state.messages = []
         st.rerun()
-with col1:
-    # Adjust width to match the height of your title text
-    st.image("https://res.cloudinary.com/dbdu4an3o/image/upload/f_auto,q_auto/Frame_2121454740_1_uywfnr", width=60)
+
 # Main Interface
 st.title("\U0001F6E1\uFE0F CoSec AI")
 st.caption("Secured by POOLED Architecture | Identity-Driven Data Isolation")
