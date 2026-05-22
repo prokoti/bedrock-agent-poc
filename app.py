@@ -94,7 +94,7 @@ with st.sidebar:
         st.rerun()
 
 # Main Interface
-st.title("🛡️ Prokoti Multi-Tenant RAG")
+st.title("🛡️ CoSec AI")
 st.caption("Secured by POOLED Architecture | Identity-Driven Data Isolation")
 
 # Chat History
