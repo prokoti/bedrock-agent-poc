@@ -94,7 +94,7 @@ with st.sidebar:
         st.rerun()
 
 # Main Interface
-st.title("🛡️ CoSec AI")
+st.title("\U0001F6E1\uFE0F CoSec AI")
 st.caption("Secured by POOLED Architecture | Identity-Driven Data Isolation")
 
 # Chat History
